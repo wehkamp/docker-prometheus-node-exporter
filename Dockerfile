@@ -13,4 +13,4 @@ RUN apk add --update -t go && \
 	go build -o /bin/node-exporter
 
 EXPOSE      9100
-ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)"]
+ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)", "-collector.ntp.server", "3.amazon.pool.ntp.org"]
