@@ -10,9 +10,9 @@ WORKDIR $APPPATH
 
 ADD . $APPPATH/
 
-RUN apk add --update -t build-deps go libc-dev gcc libgcc && \
+RUN apk add --update -t go && \
 	go build -o /bin/node-exporter && \
-	apk del --purge build-deps && rm -rf $GOPATH
+	rm -rf $GOPATH
 
 EXPOSE      9100
 ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)"]
