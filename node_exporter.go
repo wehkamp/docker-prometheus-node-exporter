@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -25,13 +26,16 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/node_exporter/collector"
 )
 
-const subsystem = "exporter"
+const (
+	defaultCollectors = "conntrack,cpu,diskstats,entropy,filefd,filesystem,hwmon,loadavg,mdadm,meminfo,netdev,netstat,sockstat,stat,textfile,time,uname,vmstat"
+)
 
 var (
+/*
 	// Version of node_exporter. Set at build time.
 	Version = "0.0.0.dev"
 
@@ -44,15 +48,15 @@ var (
 	printCollectors = flag.Bool("collectors.print", false, "If true, print available collectors and exit.")
 
 	collectorLabelNames = []string{"collector", "result"}
-
+*/
 	scrapeDurations = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace: collector.Namespace,
-			Subsystem: subsystem,
+			Subsystem: "exporter",
 			Name:      "scrape_duration_seconds",
 			Help:      "node_exporter: Duration of a scrape job.",
 		},
-		collectorLabelNames,
+		[]string{"collector", "result"},
 	)
 )
 
@@ -107,9 +111,9 @@ func execute(name string, c collector.Collector, ch chan<- prometheus.Metric) {
 	scrapeDurations.WithLabelValues(name, result).Observe(duration.Seconds())
 }
 
-func loadCollectors() (map[string]collector.Collector, error) {
+func loadCollectors(list string) (map[string]collector.Collector, error) {
 	collectors := map[string]collector.Collector{}
-	for _, name := range strings.Split(*enabledCollectors, ",") {
+	for _, name := range strings.Split(list, ",") {
 		fn, ok := collector.Factories[name]
 		if !ok {
 			return nil, fmt.Errorf("collector '%s' not available", name)
@@ -123,8 +127,27 @@ func loadCollectors() (map[string]collector.Collector, error) {
 	return collectors, nil
 }
 
+func init() {
+	prometheus.MustRegister(version.NewCollector("node_exporter"))
+}
+
 func main() {
+	var (
+		showVersion       = flag.Bool("version", false, "Print version information.")
+		listenAddress     = flag.String("web.listen-address", ":9100", "Address on which to expose metrics and web interface.")
+		metricsPath       = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+		enabledCollectors = flag.String("collectors.enabled", filterAvailableCollectors(defaultCollectors), "Comma-separated list of collectors to use.")
+		printCollectors   = flag.Bool("collectors.print", false, "If true, print available collectors and exit.")
+	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Fprintln(os.Stdout, version.Print("node_exporter"))
+		os.Exit(0)
+	}
+
+	log.Infoln("Starting node_exporter", version.Info())
+	log.Infoln("Build context", version.BuildContext())
 
 	if *printCollectors {
 		collectorNames := make(sort.StringSlice, 0, len(collector.Factories))
@@ -138,7 +161,7 @@ func main() {
 		}
 		return
 	}
-	collectors, err := loadCollectors()
+	collectors, err := loadCollectors(*enabledCollectors)
 	if err != nil {
 		log.Fatalf("Couldn't load collectors: %s", err)
 	}
@@ -164,7 +187,7 @@ func main() {
 			</html>`))
 	})
 
-	log.Infof("Starting node_exporter v%s at %s", Version, *listenAddress)
+	log.Infoln("Listening on", *listenAddress)
 	err = http.ListenAndServe(*listenAddress, nil)
 	if err != nil {
 		log.Fatal(err)

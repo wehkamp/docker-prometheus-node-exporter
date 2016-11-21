@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	ignoredDevices = flag.String("collector.diskstats.ignored-devices", "^(ram|loop|fd|(h|s|v|xv)d[a-z])\\d+$", "Regexp of devices to ignore for diskstats.")
+	ignoredDevices = flag.String("collector.diskstats.ignored-devices", "^(ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\\d+n\\d+p)\\d+$", "Regexp of devices to ignore for diskstats.")
 )
 
 type diskstatsCollector struct {
@@ -258,7 +258,7 @@ func parseDiskStats(r io.Reader) (map[string]map[int]string, error) {
 
 		bytesWritten, err := convertDiskSectorsToBytes(diskStats[dev][6])
 		if err != nil {
-			return nil, fmt.Errorf("invalid value for sectors read in %s: %s", procFilePath("diskstats"), scanner.Text())
+			return nil, fmt.Errorf("invalid value for sectors written in %s: %s", procFilePath("diskstats"), scanner.Text())
 		}
 		diskStats[dev][12] = bytesWritten
 	}

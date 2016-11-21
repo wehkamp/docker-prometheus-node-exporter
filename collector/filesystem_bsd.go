@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build freebsd openbsd
+// +build freebsd openbsd darwin,amd64 dragonfly
 // +build !nofilesystem
 
 package collector
@@ -33,6 +33,8 @@ import "C"
 
 const (
 	defIgnoredMountPoints = "^/(dev)($|/)"
+	defIgnoredFSTypes     = "^devfs$"
+	MNT_RDONLY            = 0x1
 )
 
 // Expose filesystem fullness.
@@ -43,7 +45,7 @@ func (c *filesystemCollector) GetStats() (stats []filesystemStats, err error) {
 		return nil, errors.New("getmntinfo() failed")
 	}
 
-	mnt := (*[1 << 30]C.struct_statfs)(unsafe.Pointer(mntbuf))
+	mnt := (*[1 << 20]C.struct_statfs)(unsafe.Pointer(mntbuf))
 	stats = []filesystemStats{}
 	for i := 0; i < int(count); i++ {
 		mountpoint := C.GoString(&mnt[i].f_mntonname[0])
@@ -54,6 +56,15 @@ func (c *filesystemCollector) GetStats() (stats []filesystemStats, err error) {
 
 		device := C.GoString(&mnt[i].f_mntfromname[0])
 		fstype := C.GoString(&mnt[i].f_fstypename[0])
+		if c.ignoredFSTypesPattern.MatchString(fstype) {
+			log.Debugf("Ignoring fs type: %s", fstype)
+			continue
+		}
+
+		var ro float64
+		if (mnt[i].f_flags & MNT_RDONLY) != 0 {
+			ro = 1
+		}
 
 		labelValues := []string{device, mountpoint, fstype}
 		stats = append(stats, filesystemStats{
@@ -63,6 +74,7 @@ func (c *filesystemCollector) GetStats() (stats []filesystemStats, err error) {
 			avail:       float64(mnt[i].f_bavail) * float64(mnt[i].f_bsize),
 			files:       float64(mnt[i].f_files),
 			filesFree:   float64(mnt[i].f_ffree),
+			ro:          ro,
 		})
 	}
 	return stats, nil

@@ -12,7 +12,7 @@
 // limitations under the License.
 
 // +build !nofilesystem
-// +build linux freebsd openbsd
+// +build linux freebsd openbsd darwin,amd64 dragonfly
 
 package collector
 
@@ -25,6 +25,7 @@ import (
 
 // Arch-dependent implementation must define:
 // * defIgnoredMountPoints
+// * defIgnoredFSTypes
 // * filesystemLabelNames
 // * filesystemCollector.GetStats
 
@@ -34,18 +35,24 @@ var (
 		defIgnoredMountPoints,
 		"Regexp of mount points to ignore for filesystem collector.")
 
+	ignoredFSTypes = flag.String(
+		"collector.filesystem.ignored-fs-types",
+		defIgnoredFSTypes,
+		"Regexp of filesystem types to ignore for filesystem collector.")
+
 	filesystemLabelNames = []string{"device", "mountpoint", "fstype"}
 )
 
 type filesystemCollector struct {
 	ignoredMountPointsPattern *regexp.Regexp
+	ignoredFSTypesPattern     *regexp.Regexp
 	sizeDesc, freeDesc, availDesc,
-	filesDesc, filesFreeDesc *prometheus.Desc
+	filesDesc, filesFreeDesc, roDesc *prometheus.Desc
 }
 
 type filesystemStats struct {
-	labelValues                         []string
-	size, free, avail, files, filesFree float64
+	labelValues                             []string
+	size, free, avail, files, filesFree, ro float64
 }
 
 func init() {
@@ -56,7 +63,8 @@ func init() {
 // Filesystems stats.
 func NewFilesystemCollector() (Collector, error) {
 	subsystem := "filesystem"
-	pattern := regexp.MustCompile(*ignoredMountPoints)
+	mountPointPattern := regexp.MustCompile(*ignoredMountPoints)
+	filesystemsTypesPattern := regexp.MustCompile(*ignoredFSTypes)
 
 	sizeDesc := prometheus.NewDesc(
 		prometheus.BuildFQName(Namespace, subsystem, "size"),
@@ -88,13 +96,21 @@ func NewFilesystemCollector() (Collector, error) {
 		filesystemLabelNames, nil,
 	)
 
+	roDesc := prometheus.NewDesc(
+		prometheus.BuildFQName(Namespace, subsystem, "readonly"),
+		"Filesystem read-only status.",
+		filesystemLabelNames, nil,
+	)
+
 	return &filesystemCollector{
-		ignoredMountPointsPattern: pattern,
+		ignoredMountPointsPattern: mountPointPattern,
+		ignoredFSTypesPattern:     filesystemsTypesPattern,
 		sizeDesc:                  sizeDesc,
 		freeDesc:                  freeDesc,
 		availDesc:                 availDesc,
 		filesDesc:                 filesDesc,
 		filesFreeDesc:             filesFreeDesc,
+		roDesc:                    roDesc,
 	}, nil
 }
 
@@ -123,6 +139,10 @@ func (c *filesystemCollector) Update(ch chan<- prometheus.Metric) (err error) {
 		ch <- prometheus.MustNewConstMetric(
 			c.filesFreeDesc, prometheus.GaugeValue,
 			s.filesFree, s.labelValues...,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.roDesc, prometheus.GaugeValue,
+			s.ro, s.labelValues...,
 		)
 	}
 	return nil

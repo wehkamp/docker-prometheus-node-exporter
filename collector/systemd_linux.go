@@ -16,18 +16,36 @@
 package collector
 
 import (
+	"flag"
 	"fmt"
+	"regexp"
 
 	"github.com/coreos/go-systemd/dbus"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
+)
+
+var (
+	unitWhitelist = flag.String("collector.systemd.unit-whitelist", ".+", "Regexp of systemd units to whitelist. Units must both match whitelist and not match blacklist to be included.")
+	unitBlacklist = flag.String("collector.systemd.unit-blacklist", "", "Regexp of systemd units to blacklist. Units must both match whitelist and not match blacklist to be included.")
 )
 
 type systemdCollector struct {
-	unitDesc          *prometheus.Desc
-	systemRunningDesc *prometheus.Desc
+	unitDesc             *prometheus.Desc
+	systemRunningDesc    *prometheus.Desc
+	unitWhitelistPattern *regexp.Regexp
+	unitBlacklistPattern *regexp.Regexp
 }
 
 var unitStatesName = []string{"active", "activating", "deactivating", "inactive", "failed"}
+
+var (
+	systemdPrivate = flag.Bool(
+		"collector.systemd.private",
+		false,
+		"Establish a private, direct connection to systemd without dbus.",
+	)
+)
 
 func init() {
 	Factories["systemd"] = NewSystemdCollector
@@ -47,10 +65,14 @@ func NewSystemdCollector() (Collector, error) {
 		"Whether the system is operational (see 'systemctl is-system-running')",
 		nil, nil,
 	)
+	unitWhitelistPattern := regexp.MustCompile(fmt.Sprintf("^(?:%s)$", *unitWhitelist))
+	unitBlacklistPattern := regexp.MustCompile(fmt.Sprintf("^(?:%s)$", *unitBlacklist))
 
 	return &systemdCollector{
-		unitDesc:          unitDesc,
-		systemRunningDesc: systemRunningDesc,
+		unitDesc:             unitDesc,
+		systemRunningDesc:    systemRunningDesc,
+		unitWhitelistPattern: unitWhitelistPattern,
+		unitBlacklistPattern: unitBlacklistPattern,
 	}, nil
 }
 
@@ -92,18 +114,44 @@ func (c *systemdCollector) collectSystemState(ch chan<- prometheus.Metric, syste
 	ch <- prometheus.MustNewConstMetric(c.systemRunningDesc, prometheus.GaugeValue, isSystemRunning)
 }
 
+func (c *systemdCollector) newDbus() (*dbus.Conn, error) {
+	if *systemdPrivate {
+		return dbus.NewSystemdConnection()
+	}
+	return dbus.New()
+}
+
 func (c *systemdCollector) listUnits() ([]dbus.UnitStatus, error) {
-	conn, err := dbus.New()
+	conn, err := c.newDbus()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get dbus connection: %s", err)
 	}
-	units, err := conn.ListUnits()
+	allUnits, err := conn.ListUnits()
 	conn.Close()
-	return units, err
+
+	if err != nil {
+		return []dbus.UnitStatus{}, err
+	}
+
+	units := filterUnits(allUnits, c.unitWhitelistPattern, c.unitBlacklistPattern)
+	return units, nil
+}
+
+func filterUnits(units []dbus.UnitStatus, whitelistPattern, blacklistPattern *regexp.Regexp) []dbus.UnitStatus {
+	filtered := make([]dbus.UnitStatus, 0, len(units))
+	for _, unit := range units {
+		if whitelistPattern.MatchString(unit.Name) && !blacklistPattern.MatchString(unit.Name) {
+			filtered = append(filtered, unit)
+		} else {
+			log.Debugf("Ignoring unit: %s", unit.Name)
+		}
+	}
+
+	return filtered
 }
 
 func (c *systemdCollector) getSystemState() (state string, err error) {
-	conn, err := dbus.New()
+	conn, err := c.newDbus()
 	if err != nil {
 		return "", fmt.Errorf("couldn't get dbus connection: %s", err)
 	}

@@ -1,4 +1,4 @@
-FROM wehkamp/alpine:3.2
+FROM wehkamp/alpine:3.4
 
 LABEL container.name="wehkamp/prometheus-node-exporter:latest"
 
@@ -15,6 +15,8 @@ RUN go get -d
 RUN go build -o /bin/node-exporter
 
 RUN apk del --purge build-deps && rm -rf $GOPATH
+
+COPY node_exporter /bin/node_exporter
 
 EXPOSE      9100
 ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)"]

@@ -7,9 +7,12 @@ collectors=$(cat << COLLECTORS
   diskstats
   entropy
   filefd
+  hwmon
+  ksmd
   loadavg
   mdadm
   meminfo
+  meminfo_numa
   netdev
   netstat
   sockstat

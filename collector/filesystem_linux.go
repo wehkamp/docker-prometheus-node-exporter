@@ -26,6 +26,8 @@ import (
 
 const (
 	defIgnoredMountPoints = "^/(sys|proc|dev)($|/)"
+	defIgnoredFSTypes     = "^(sys|proc)fs$"
+	ST_RDONLY             = 0x1
 )
 
 type filesystemDetails struct {
@@ -46,12 +48,21 @@ func (c *filesystemCollector) GetStats() (stats []filesystemStats, err error) {
 			log.Debugf("Ignoring mount point: %s", mpd.mountPoint)
 			continue
 		}
+		if c.ignoredFSTypesPattern.MatchString(mpd.fsType) {
+			log.Debugf("Ignoring fs type: %s", mpd.fsType)
+			continue
+		}
 		buf := new(syscall.Statfs_t)
 		err := syscall.Statfs(mpd.mountPoint, buf)
 		if err != nil {
 			log.Debugf("Statfs on %s returned %s",
 				mpd.mountPoint, err)
 			continue
+		}
+
+		var ro float64
+		if buf.Flags&ST_RDONLY != 0 {
+			ro = 1
 		}
 
 		labelValues := []string{mpd.device, mpd.mountPoint, mpd.fsType}
@@ -62,6 +73,7 @@ func (c *filesystemCollector) GetStats() (stats []filesystemStats, err error) {
 			avail:       float64(buf.Bavail) * float64(buf.Bsize),
 			files:       float64(buf.Files),
 			filesFree:   float64(buf.Ffree),
+			ro:          ro,
 		})
 	}
 	return stats, nil
