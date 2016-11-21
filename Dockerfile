@@ -7,12 +7,10 @@ ENV APPPATH $GOPATH/src/github.com/prometheus/node_exporter
 
 WORKDIR $APPPATH
 
-
 ADD . $APPPATH/
 
 RUN apk add --update -t go && \
-	go build -o /bin/node-exporter && \
-	rm -rf $GOPATH
+	go build -o /bin/node-exporter
 
 EXPOSE      9100
 ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)"]
