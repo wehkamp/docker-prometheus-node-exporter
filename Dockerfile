@@ -3,20 +3,16 @@ FROM wehkamp/alpine:3.4
 LABEL container.name="wehkamp/prometheus-node-exporter:latest"
 
 ENV  GOPATH /go
-ENV APPPATH $GOPATH/src/
+ENV APPPATH $GOPATH/src/github.com/prometheus/node_exporter
 
 WORKDIR $APPPATH
 
-RUN apk add --update -t build-deps go git mercurial libc-dev gcc libgcc
 
-ADD *.go $APPPATH/
+ADD . $APPPATH/
 
-RUN go get -d
-RUN go build -o /bin/node-exporter
-
-RUN apk del --purge build-deps && rm -rf $GOPATH
-
-COPY node_exporter /bin/node_exporter
+RUN apk add --update -t build-deps go libc-dev gcc libgcc && \
+	go build -o /bin/node-exporter && \
+	apk del --purge build-deps && rm -rf $GOPATH
 
 EXPOSE      9100
 ENTRYPOINT ["/bin/node-exporter", "-collector.filesystem.ignored-mount-points", ".*/(sys|proc|dev|etc|docker)($|/)"]
