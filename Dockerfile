@@ -1,6 +1,6 @@
 FROM wehkamp/alpine:3.4
 
-LABEL container.name="wehkamp/prometheus-node-exporter:latest"
+LABEL container.name="wehkamp/prometheus-node-exporter"
 
 ENV  GOPATH /go
 ENV APPPATH $GOPATH/src/github.com/prometheus/node_exporter
