@@ -1,4 +1,4 @@
-FROM wehkamp/alpine:3.4
+FROM 234348545939.dkr.ecr.eu-west-1.amazonaws.com/wehkamp/alpine:3.4
 
 LABEL container.name="wehkamp/prometheus-node-exporter"
 
